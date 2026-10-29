@@ -2,166 +2,201 @@ from bs4 import BeautifulSoup
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="تولیدکننده پست هوشمند پارادایس", page_icon="🚗")
+st.set_page_config(
+    page_title="ParadiseFilter Bot & Content Generator",
+    page_icon="🚗",
+    layout="centered",
+)
 
-st.title("🚗 ربات تخصصی تولید پست پارادایس فیلتر")
+st.title("🤖 ربات تخصصی پست‌ساز و ارسال به بله - پارادایس فیلتر")
 st.write(
-    "لینک محصول را وارد کنید تا پست اختصاصی و از نظر بصری جذاب برای همان"
-    " پلتفرم آماده شود."
+    "لینک محصول را وارد کنید، کپشن استاندارد و فراگیر را بسازید و با اتصال توکن"
+    " ربات، مستقیماً به بله ارسال کنید."
 )
 
-url = st.text_input("لینک صفحه محصول (URL):")
+# ----------------- تنظیمات توکن ربات بله با قابلیت ذخیره (Session State) -----------------
+with st.expander("⚙️ تنظیمات اتصال به ربات بله (توکن)"):
+  if "ble_token" not in st.session_state:
+    st.session_state.ble_token = ""
 
-# منوی انتخاب پلتفرم با در نظر گرفتن نوع جذابیت بصری
-platform = st.selectbox(
-    "انتخاب پلتفرم مقصد (بر اساس ساختار بصری):",
-    (
-        "📸 اینستاگرام (آلبوم تصاویر + کپشن جذاب و هشتگ‌گذاری مدرن)",
-        "📱 پیام‌رسان بله / سروش (پست کانالی مرتب با باکس‌های مشخصات)",
-        "💬 واتس‌اپ (متن تمیز، خلاصه و بولدشده مناسب ارسال سریع)",
-    ),
+  token_input = st.text_input(
+      "🔑 توکن ربات بله (Bot Token):",
+      value=st.session_state.ble_token,
+      type="password",
+      placeholder="توکن ربات خود را اینجا وارد کنید...",
+  )
+
+  chat_id_input = st.text_input(
+      "🆔 شناسه چت یا کانال مقصد (Chat ID / Channel Username):",
+      value="@ParadiseFilter",
+      placeholder="مثلا @ChannelName یا آیدی عددی",
+  )
+
+  if st.button("💾 ذخیره توکن"):
+    st.session_state.ble_token = token_input
+    st.success("توکن ربات با موفقیت ذخیره شد!")
+
+# ----------------- بخش دریافت لینک محصول -----------------
+url = st.text_input(
+    "🔗 لینک محصول در سایت پارادایس فیلتر:",
+    placeholder="https://paradisefilter.ir/product/...",
 )
 
-if st.button("✨ تولید پست متناسب با پلتفرم"):
-  if url:
-    with st.spinner("در حال استخراج هوشمند اطلاعات..."):
+if url:
+  try:
+    with st.spinner("در حال استخراج اطلاعات و تصاویر از سایت..."):
       headers = {
           "User-Agent": (
               "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
               " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
           )
       }
-      try:
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-          soup = BeautifulSoup(response.text, "html.parser")
+      response = requests.get(url, headers=headers)
+      response.raise_for_status()
 
-          # استخراج عناوین و مشخصات ثابت
-          title_el = soup.find("h1")
-          title = (
-              title_el.get_text(strip=True)
-              if title_el
-              else "فیلتر هوا پارادایس"
-          )
+      soup = BeautifulSoup(response.text, "html.parser")
 
-          price_el = soup.find("span", class_="amount") or soup.find(
-              "div", class_="price"
-          )
-          price = (
-              price_el.get_text(strip=True) if price_el else "تماس بگیرید"
-          )
+      # استخراج عنوان
+      title_tag = soup.find("h1") or soup.find(
+          "div", class_="product-title"
+      ) or soup.find("title")
+      product_title = (
+          title_tag.get_text(strip=True)
+          if title_tag
+          else "فیلتر هوا پارادایس"
+      )
 
-          images = []
-          for img in soup.select(
-              ".woocommerce-product-gallery__image img, .product-gallery img,"
-              " .woocommerce-Tabs-panel img, img.wp-post-image"
-          ):
-            img_url = img.get("src") or img.get("data-src")
-            if img_url and img_url not in images:
-              if "-300x300" in img_url:
-                img_url = img_url.replace("-300x300", "")
-              images.append(img_url)
+      # استخراج قیمت
+      price_text = "تماس بگیرید"
+      price_selectors = [
+          "p.price ins bdi",
+          "p.price bdi",
+          "span.price",
+          ".amount",
+          ".product-price",
+      ]
+      for selector in price_selectors:
+        p_tag = soup.select_one(selector)
+        if p_tag:
+          cleaned_price = p_tag.get_text(strip=True)
+          if cleaned_price:
+            price_text = f"{cleaned_price} تومان"
+            break
 
-          specs = {}
-          for row in soup.select(
-              "table.woocommerce-product-attributes tr, .product-attributes tr,"
-              " .spec-table tr"
-          ):
-            cols = row.find_all(["th", "td"])
-            if len(cols) >= 2:
-              specs[cols[1].get_text(strip=True)] = cols[0].get_text(strip=True)
+      if price_text == "تماس بگیرید":
+        for tag in soup.find_all(
+            ["span", "div", "p"], text=lambda t: t and "تومان" in t
+        ):
+          txt = tag.get_text(strip=True)
+          if len(txt) < 30:
+            price_text = txt
+            break
 
-          product_type = specs.get("نوع محصول", "وارداتی")
-          packaging = specs.get("بسته‌بندی", "جعبه اصلی")
-          brand = specs.get("برند", "GENUINE")
-          compatible_cars = specs.get("مناسب خودروهای", "")
+      # استخراج جدول مشخصات فنی
+      specs = {}
+      spec_rows = soup.select("table.shop_attributes tr, .product-attributes tr")
+      for row in spec_rows:
+        cols = row.find_all(["th", "td"])
+        if len(cols) == 2:
+          key = cols[0].get_text(strip=True)
+          val = cols[1].get_text(strip=True)
+          specs[key] = val
 
-          clean_type = product_type.replace(" ", "").replace("‌", "")
-          clean_pkg = packaging.replace(" ", "").replace("‌", "")
-          clean_brand = brand.replace(" ", "").replace("/", "")
+      # استخراج تصاویر
+      images = []
+      img_tags = soup.select(
+          ".woocommerce-product-gallery__image img, .product-gallery img,"
+          " .gallery img, .images img"
+      )
+      for img in img_tags:
+        img_url = img.get("src") or img.get("data-src")
+        if img_url and img_url not in images:
+          if img_url.startswith("//"):
+            img_url = "https:" + img_url
+          elif img_url.startswith("/"):
+            img_url = "https://paradisefilter.ir" + img_url
+          images.append(img_url)
 
-          car_tags = ""
-          if "NISSAN" in compatible_cars.upper() or "نیسان" in title:
-            car_tags += "#نیسان #آلتیما #تیانا "
-          if "HYUNDAI" in compatible_cars.upper():
-            car_tags += "#هیوندای #سوناتا #توسان "
-          if "KIA" in compatible_cars.upper():
-            car_tags += "#کیا #اسپورتیج "
+    st.success("اطلاعات محصول با موفقیت استخراج شد!")
 
-          hashtags = (
-              f"#{clean_type} #{clean_pkg} #{clean_brand} {car_tags}#فیلترهوا"
-              " #لوازم_یدکی #پارادایس_فیلتر"
-          )
+    # نمایش تصاویر
+    if images:
+      with st.expander("🖼️ مشاهده آلبوم تصاویر محصول"):
+        cols = st.columns(min(len(images), 3))
+        for idx, img_url in enumerate(images):
+          with cols[idx % len(cols)]:
+            st.image(img_url, use_container_width=True)
 
-          specs_text = ""
-          for k, v in specs.items():
-            specs_text += f"🔹 {k} : {v}\n"
+    # ساخت مشخصات فنی کوتاه کلیدی
+    specs_summary = ""
+    if specs:
+      for k, v in list(specs.items())[:3]:
+        specs_summary += f"• __{k}:__ {v}\n"
+    else:
+      specs_summary = "• __اصالت و کیفیت:__ تضمین شده توسط پارادایس فیلتر\n"
 
-          st.success("✅ پست جذاب شما آماده شد!")
+    # هشتگ‌های فراگیر فارسی و انگلیسی
+    hashtags = (
+        "#فیلتر_هوا #Cabin_Filter #Air_Filter #پارادایس_فیلتر #ParadiseFilter"
+        " #لوازم_یدکی #قطعات_یدکی #AutoParts #SpareParts #فیلترهوا_خودرو"
+        " #جنیون_پارت #GenuineParts #خرید_آنلاین #فیلتر_خودرو #CarFilter"
+    )
 
-          # ۱. خروجی اینستاگرام (تمرکز روی جذب مخاطب بصری، هشتگ‌های انتهای کار و ساختار اسلایدی)
-          if "اینستاگرام" in platform:
-            st.subheader("📸 خروجی بصری مخصوص اینستاگرام")
-            post_output = f"""🔥 معرفی محصول جدید در پارادایس فیلتر
+    # افزودن هوشمند هشتگ‌های مرتبط با خودرو بر اساس عنوان
+    if "نیسان" in product_title or "Nissan" in product_title:
+      hashtags += " #نیسان #Nissan"
+    if "تیانا" in product_title:
+      hashtags += " #تیانا #Teana"
+    if "آلتیما" in product_title:
+      hashtags += " #آلتیما #Altima"
 
-📌 {title}
+    # متن نهایی پست با تکنیک‌های کپشن‌نویسی استاندارد
+    clean_post_text = f"""🎯 *{product_title}*  
 
-💰 قیمت ویژه: {price}
+💰 قیمت: *{price_text}*  
 
-📑 مشخصات فنی کالا:
-{specs_text}
-🛒 ثبت سفارش سریع از طریق لینک موجود در بیو پیج:
-{url}
+📋 _مشخصات فنی کلیدی:_  
+{specs_summary}
+🔗 _برای مشاهده جزئیات کامل و ابعاد، محصول را در سایت بررسی کنید._  
+
+🛒 *روش‌های ثبت سفارش و خرید:*  
+👉 [ثبت سفارش مستقیم از وب‌سایت پارادایس]({url})  
+👉 [پرداخت آنی و خرید امن در بله](https://ble.ir/paradiselinkpay/YOUR_PAY_ID)  
+👉 [گفتگو و مشاوره با ادمین](https://ble.ir/paradisefilter)  
+
+🆔 @ParadiseFilter  
 
 {hashtags}"""
-            st.text_area("کپشن آماده اینستاگرام:", post_output, height=250)
-            st.info(
-                f"💡 پیشنهاد بصری: برای این پست از {len(images)} تصویر گالری و"
-                " بنرهای راهنمای سازگاری خودرو به صورت اسلایدی (Carousel)"
-                " استفاده کنید."
-            )
-            for idx, img in enumerate(images, 1):
-              st.write(f"لینک تصویر {idx}: {img}")
 
-          # ۲. خروجی بله و سروش (تمرکز روی کادربندی کانالی، نظم بصری بالا و فونت‌های تمیز)
-          elif "بله" in platform:
-            st.subheader("📱 خروجی کانالی مخصوص بله / سروش")
-            post_output = f"""✨ **{title}** ✨
+    st.subheader("📝 متن نهایی آماده برای انتشار:")
+    final_post = st.text_area("متن پست:", clean_post_text, height=300)
 
-━━━━━━━━━━━━━━━
-💵 **قیمت مصرف‌کننده:** {price}
-━━━━━━━━━━━━━━━
+    # دکمه ارسال مستقیم به بله
+    if st.button("🚀 ارسال مستقیم پست به بله"):
+      if not st.session_state.ble_token:
+        st.error(
+            "لطفاً ابتدا توکن ربات بله را در بخش تنظیمات بالا وارد و ذخیره کنید!"
+        )
+      else:
+        with st.spinner("در حال ارسال پیام به بله..."):
+          token = st.session_state.ble_token
+          api_url = f"https://tapi.bale.ai/bot{token}/sendMessage"
 
-🛠 **اطلاعات و مشخصات:**
-{specs_text}
-🔗 **لینک مشاهده و خرید آنلاین:**
-{url}
+          payload = {
+              "chat_id": chat_id_input,
+              "text": final_post,
+              "parse_mode": "Markdown",
+          }
 
-{hashtags}"""
-            st.text_area("متن کانال:", post_output, height=250)
-            if images:
-              st.image(
-                  images[0],
-                  width=350,
-                  caption="بنر اصلی جهت انتشار در بالای پست",
-              )
+          try:
+            r = requests.post(api_url, json=payload)
+            res_json = r.json()
+            if res_json.get("ok"):
+              st.success("✅ پست با موفقیت به بله ارسال شد!")
+            else:
+              st.error(f"❌ خطا در ارسال از سوی بله: {res_json}")
+          except Exception as api_err:
+            st.error(f"خطای ارتباط با سرور بله: {api_err}")
 
-          # ۳. خروجی واتس‌اپ (خلاصه، خوانا در موبایل و به دور از شلوغی بیش از حد)
-          else:
-            st.subheader("💬 خروجی بهینه برای واتس‌اپ")
-            post_output = f"""*🎯 {title}*
-
-💰 *قیمت:* {price}
-
-📋 *مشخصات اصلی:*
-{specs_text}
-🔗 *لینک خرید مستقیم:* 
-{url}"""
-            st.text_area("متن واتس‌اپ:", post_output, height=200)
-
-        else:
-          st.error("خطا در بارگذاری صفحه. لطفاً لینک را بررسی کنید.")
-      except Exception as e:
-        st.error(f"خطا در پردازش: {e}")
-  else:
-    st.warning("لطفاً لینک محصول را وارد کنید.")
+  except Exception as e:
+    st.error(f"خطا در پردازش لینک: {e}")
