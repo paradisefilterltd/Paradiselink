@@ -76,7 +76,6 @@ if url:
       if price_elem:
         p_val = price_elem.get_text(strip=True)
         if p_val:
-          # پاکسازی اعداد و اضافه کردن تومان اگر نداشت
           price_text = (
               p_val if "تومان" in p_val or "ریال" in p_val else f"{p_val} تومان"
           )
@@ -84,7 +83,8 @@ if url:
       # ۳. استخراج مشخصات فنی (جدول مشخصات محصول)
       specs = {}
       spec_rows = soup.select(
-          "table.shop_attributes tr, .product-attributes tr, .woocommerce-product-attributes tr"
+          "table.shop_attributes tr, .product-attributes tr,"
+          " .woocommerce-product-attributes tr"
       )
       for row in spec_rows:
         cols = row.find_all(["th", "td"])
@@ -95,7 +95,6 @@ if url:
 
       # ۴. استخراج تصویر اصلی محصول با کیفیت بالا
       image_url = ""
-      # بررسی تگ‌های تصویر گالری ووکامرس
       img_elem = soup.select_one(
           ".woocommerce-product-gallery__image img, .product-image img,"
           " .wp-post-image, .images img"
@@ -115,14 +114,9 @@ if url:
 
     st.success("✅ اطلاعات و تصویر محصول با موفقیت استخراج شد!")
 
-    # ساخت مشخصات فنی کوتاه کلیدی
+    # ساخت مشخصات فنی کوتاه کلیدی (اصلاح شده و بدون خطا)
     specs_summary = ""
     if specs:
-      for k, v in list(specs.items())(
-          if hasattr(specs.items(), "__iter__") else specs.items()
-      ):
-        pass
-      # برداشتن ۳ مورد اول مشخصات
       count = 0
       for k, v in specs.items():
         if count < 3:
@@ -141,7 +135,7 @@ if url:
     # افزودن هوشمند هشتگ برندها بر اساس نام محصول
     if "هایما" in product_title or "Haima" in product_title:
       hashtags += " #هایما #Haima"
-    if "س S8" in product_title or "S8" in product_title:
+    if "S8" in product_title:
       hashtags += " #هایماS8 #Haima_S8"
     if "نیسان" in product_title or "Nissan" in product_title:
       hashtags += " #نیسان #Nissan"
